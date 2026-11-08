@@ -67,7 +67,7 @@ func TestReorder(t *testing.T) {
 	// Hide done, then move C up: it swaps with A (the visible neighbour).
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyShiftUp})
 	m.Update(cmd())
 	if b, _ := os.ReadFile(p); string(b) != "# 2026-11-08\n\n- [ ] C\n- [x] B\n- [ ] A\n" {
 		t.Fatalf("got %q", b)
@@ -76,7 +76,7 @@ func TestReorder(t *testing.T) {
 		t.Fatalf("cursor should follow C, cursor=%d", m.today.cursor)
 	}
 	// Moving up at the top is a no-op.
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp}); cmd != nil {
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyShiftUp}); cmd != nil {
 		t.Fatal("expected no command at top")
 	}
 }

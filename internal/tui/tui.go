@@ -447,9 +447,9 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.focus == focusToday {
 		switch key {
-		case "ctrl+up", "K", "ctrl+down", "J":
+		case "shift+up", "K", "shift+down", "J":
 			other := p.cursor - 1
-			if key == "ctrl+down" || key == "J" {
+			if key == "shift+down" || key == "J" {
 				other = p.cursor + 1
 			}
 			if other < 0 || other >= len(tasks) {
@@ -604,9 +604,9 @@ func (m *Model) footer() string {
 		}
 		var help string
 		if m.focus == focusToday {
-			help = "tab inbox · j/k move · ctrl+↑/↓ reorder · space toggle · a add · ← to inbox · c carry over · h " + hide + " · q quit"
+			help = "tab inbox · shift+↑/↓ reorder · space toggle · a add · ← to inbox · c carry over · h " + hide + " · q quit"
 		} else {
-			help = "tab today · j/k move · space toggle · a add · d delete · → to today · h " + hide + " · q quit"
+			help = "tab today · space toggle · a add · d delete · → to today · h " + hide + " · q quit"
 		}
 		style := helpStyle
 		if m.width > 0 {
