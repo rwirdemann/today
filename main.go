@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"scheduled/internal/tui"
+	"github.com/rwirdemann/scheduled.os/internal/tui"
 )
 
 func main() {

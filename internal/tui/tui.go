@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fsnotify/fsnotify"
 
-	"scheduled/internal/daily"
+	"github.com/rwirdemann/scheduled.os/internal/daily"
 )
 
 var (
