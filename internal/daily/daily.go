@@ -10,30 +10,32 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 )
 
 const DateLayout = "2006-01-02"
 
 var (
-	taskRe = regexp.MustCompile(`^(\s*[-*+] \[)([ xX])(\] ?)(.*)$`)
-	nameRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\.md$`)
+	headingRe = regexp.MustCompile(`^#{2,6}\s+(.*?)\s*$`)
+	taskRe    = regexp.MustCompile(`^(\s*[-*+] \[)([ xX])(\] ?)(.*)$`)
+	nameRe    = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\.md$`)
 )
 
 // Task is a single checkbox line in a note.
 type Task struct {
-	Line   int    // 0-based line index in the file
-	Raw    string // the full original line, used to detect concurrent edits
-	Indent int    // leading whitespace width
-	Done   bool
-	Text   string
+	Line    int    // 0-based line index in the file
+	Raw     string // the full original line, used to detect concurrent edits
+	Indent  int    // leading whitespace width
+	Done    bool
+	Text    string
+	Section string // nearest preceding "## " (or deeper) heading, "" if none
 }
 
 // Note is a parsed daily note.
 type Note struct {
-	Path  string
-	Date  string // YYYY-MM-DD
-	Tasks []Task
+	Path     string
+	Date     string // YYYY-MM-DD (empty for non-daily notes like the Inbox)
+	Tasks    []Task
+	Sections []string // "## " (or deeper) headings in file order
 }
 
 // Dir manages the daily-notes directory.
@@ -90,19 +92,26 @@ func Parse(path, date string) (*Note, error) {
 		return nil, err
 	}
 	n := &Note{Path: path, Date: date}
+	section := ""
 	for i, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimRight(line, "\r")
+		if h := headingRe.FindStringSubmatch(line); h != nil {
+			section = h[1]
+			n.Sections = append(n.Sections, section)
+			continue
+		}
 		m := taskRe.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
 		indent := len(m[1]) - len(strings.TrimLeft(m[1], " \t"))
 		n.Tasks = append(n.Tasks, Task{
-			Line:   i,
-			Raw:    line,
-			Indent: indent,
-			Done:   m[2] != " ",
-			Text:   strings.TrimSpace(m[4]),
+			Line:    i,
+			Raw:     line,
+			Indent:  indent,
+			Done:    m[2] != " ",
+			Text:    strings.TrimSpace(m[4]),
+			Section: section,
 		})
 	}
 	return n, nil
@@ -222,16 +231,7 @@ func removeOpenTodos(text string) string {
 var anyTodoRe = regexp.MustCompile(`^\s*[-*+] \[.\] `)
 
 func appendTodos(text string, todos []string) string {
-	block := "- [ ] " + strings.Join(todos, "\n- [ ] ")
-	trimmed := strings.TrimRightFunc(text, unicode.IsSpace)
-	if trimmed == "" {
-		return block + "\n"
-	}
-	sep := "\n\n"
-	if anyTodoRe.MatchString(trimmed[strings.LastIndex(trimmed, "\n")+1:]) {
-		sep = "\n"
-	}
-	return trimmed + sep + block + "\n"
+	return appendLine(text, "- [ ] "+strings.Join(todos, "\n- [ ] "))
 }
 
 // CarryOverResult describes what CarryOver did.

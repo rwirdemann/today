@@ -20,6 +20,7 @@ func main() {
 	}
 	vault := flag.String("vault", defVault, "path to the zettelkasten (env ZETTEL_VAULT)")
 	folder := flag.String("folder", "Tagebuch", "daily notes folder inside the vault")
+	inbox := flag.String("inbox", "Inbox.md", "inbox file inside the vault")
 	flag.Parse()
 
 	dir := filepath.Join(*vault, *folder)
@@ -28,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m, err := tui.New(dir)
+	m, err := tui.New(dir, filepath.Join(*vault, *inbox))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
