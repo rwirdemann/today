@@ -1,4 +1,4 @@
-module github.com/rwirdemann/scheduled.os
+module github.com/rwirdemann/scheduled
 
 go 1.27.3
 
