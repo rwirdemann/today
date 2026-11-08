@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/rwirdemann/scheduled/internal/daily"
+	"github.com/rwirdemann/today/internal/daily"
 )
 
 var (

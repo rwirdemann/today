@@ -1,4 +1,4 @@
-module github.com/rwirdemann/scheduled
+module github.com/rwirdemann/today
 
 go 1.27.3
 

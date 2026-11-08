@@ -1,4 +1,4 @@
-// Command scheduled shows today's tasks from an Obsidian zettelkasten in a TUI.
+// Command today shows today's tasks from an Obsidian zettelkasten in a TUI.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/rwirdemann/scheduled/internal/tui"
+	"github.com/rwirdemann/today/internal/tui"
 )
 
 func main() {
