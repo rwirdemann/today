@@ -106,3 +106,88 @@ func TestAddTask(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestCarryOverCreatesNote(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "2026-11-05.md", "# 2026-11-05\n\n- [ ] A\n- [x] Done\n  - [ ] Nested\n")
+	write(t, dir, "2026-11-06.md", "# 2026-11-06\n\n- [ ] B\n- [ ] A\nNotiz\n")
+	write(t, dir, "2026-11-09.md", "- [ ] future\n")
+	write(t, dir, "Inbox.md", "- [ ] inbox\n")
+
+	res, err := Dir{dir}.CarryOver("2026-11-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Created || res.Moved != 3 || res.Sources != 2 {
+		t.Fatalf("unexpected result %+v", res)
+	}
+	if got := read(t, dir, "2026-11-08.md"); got != "# 2026-11-08\n\n- [ ] A\n- [ ] Nested\n- [ ] B\n" {
+		t.Fatalf("today: %q", got)
+	}
+	if got := read(t, dir, "2026-11-05.md"); got != "# 2026-11-05\n\n- [x] Done\n" {
+		t.Fatalf("source 05: %q", got)
+	}
+	if got := read(t, dir, "2026-11-06.md"); got != "# 2026-11-06\n\nNotiz\n" {
+		t.Fatalf("source 06: %q", got)
+	}
+	if got := read(t, dir, "2026-11-09.md"); got != "- [ ] future\n" {
+		t.Fatalf("future note touched: %q", got)
+	}
+	if got := read(t, dir, "Inbox.md"); got != "- [ ] inbox\n" {
+		t.Fatalf("inbox touched: %q", got)
+	}
+
+	// Second run is a no-op.
+	res, _ = Dir{dir}.CarryOver("2026-11-08")
+	if res.Created || res.Moved != 0 || res.Sources != 0 {
+		t.Fatalf("second run: %+v", res)
+	}
+}
+
+func TestCarryOverIntoExistingNote(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "2026-11-06.md", "- [ ] A\n- [ ] B\n")
+	write(t, dir, "2026-11-08.md", "# 2026-11-08\n\n- [ ] A\n")
+	res, err := Dir{dir}.CarryOver("2026-11-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Created || res.Moved != 1 || res.Sources != 1 {
+		t.Fatalf("unexpected result %+v", res)
+	}
+	if got := read(t, dir, "2026-11-08.md"); got != "# 2026-11-08\n\n- [ ] A\n- [ ] B\n" {
+		t.Fatalf("today: %q", got)
+	}
+	if got := read(t, dir, "2026-11-06.md"); got != "" {
+		t.Fatalf("source: %q", got)
+	}
+}
+
+func TestAppendTodosSeparator(t *testing.T) {
+	if got := appendTodos("# x\nText\n\n", []string{"A"}); got != "# x\nText\n\n- [ ] A\n" {
+		t.Fatalf("got %q", got)
+	}
+	if got := appendTodos("# x\n- [x] done", []string{"A", "B"}); got != "# x\n- [x] done\n- [ ] A\n- [ ] B\n" {
+		t.Fatalf("got %q", got)
+	}
+	if got := appendTodos("  \n", []string{"A"}); got != "- [ ] A\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSwap(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "d.md")
+	write(t, dir, "d.md", "# x\n- [ ] A\nText\n- [x] B\n- [ ] C\n")
+	n, _ := Parse(p, "d")
+	if err := Swap(p, n.Tasks[0], n.Tasks[1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, dir, "d.md"); got != "# x\n- [x] B\nText\n- [ ] A\n- [ ] C\n" {
+		t.Fatalf("got %q", got)
+	}
+	write(t, dir, "d.md", "gone\n")
+	if err := Swap(p, n.Tasks[1], n.Tasks[2]); err != ErrChanged {
+		t.Fatalf("want ErrChanged, got %v", err)
+	}
+}

@@ -50,3 +50,32 @@ func TestFallbackToggleAndAdd(t *testing.T) {
 		t.Fatalf("expected today's note:\n%s", v)
 	}
 }
+
+func TestReorder(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "2026-11-08.md")
+	os.WriteFile(p, []byte("# 2026-11-08\n\n- [ ] A\n- [x] B\n- [ ] C\n"), 0o644)
+	m, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	m.today = "2026-11-08"
+	m.Update(m.load()())
+
+	// Hide done, then move C up: it swaps with A (the visible neighbour).
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp})
+	m.Update(cmd())
+	if b, _ := os.ReadFile(p); string(b) != "# 2026-11-08\n\n- [ ] C\n- [x] B\n- [ ] A\n" {
+		t.Fatalf("got %q", b)
+	}
+	if m.cursor != 0 || m.visible()[0].Text != "C" {
+		t.Fatalf("cursor should follow C, cursor=%d", m.cursor)
+	}
+	// Moving up at the top is a no-op.
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp}); cmd != nil {
+		t.Fatal("expected no command at top")
+	}
+}

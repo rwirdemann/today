@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const DateLayout = "2006-01-02"
@@ -117,17 +118,7 @@ func Toggle(path string, t Task) error {
 		return err
 	}
 	lines := strings.Split(string(b), "\n")
-	idx := -1
-	if t.Line < len(lines) && strings.TrimRight(lines[t.Line], "\r") == t.Raw {
-		idx = t.Line
-	} else {
-		for i, l := range lines {
-			if strings.TrimRight(l, "\r") == t.Raw {
-				idx = i
-				break
-			}
-		}
-	}
+	idx := locate(lines, t)
 	if idx < 0 {
 		return ErrChanged
 	}
@@ -144,6 +135,35 @@ func Toggle(path string, t Task) error {
 		cr = "\r"
 	}
 	lines[idx] = m[1] + mark + m[3] + m[4] + cr
+	return writeFile(path, strings.Join(lines, "\n"))
+}
+
+// locate finds t in lines: at its recorded line if unchanged, otherwise the
+// first line with identical content. Returns -1 if not found.
+func locate(lines []string, t Task) int {
+	if t.Line < len(lines) && strings.TrimRight(lines[t.Line], "\r") == t.Raw {
+		return t.Line
+	}
+	for i, l := range lines {
+		if strings.TrimRight(l, "\r") == t.Raw {
+			return i
+		}
+	}
+	return -1
+}
+
+// Swap exchanges the lines of tasks a and b in the file at path.
+func Swap(path string, a, b Task) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	i, j := locate(lines, a), locate(lines, b)
+	if i < 0 || j < 0 {
+		return ErrChanged
+	}
+	lines[i], lines[j] = lines[j], lines[i]
 	return writeFile(path, strings.Join(lines, "\n"))
 }
 
@@ -166,6 +186,138 @@ func (d Dir) AddTask(date, text string) error {
 		s += "\n"
 	}
 	return writeFile(path, s+"- [ ] "+text+"\n")
+}
+
+// openTodoRe matches an open todo exactly like the Obsidian todo-carry-over plugin.
+var openTodoRe = regexp.MustCompile(`^(\s*[-*+] )\[ \] (.*)$`)
+
+func openTodo(line string) (string, bool) {
+	m := openTodoRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
+	if m == nil || strings.TrimSpace(m[2]) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(m[2]), true
+}
+
+func extractOpenTodos(text string) []string {
+	var out []string
+	for _, l := range strings.Split(text, "\n") {
+		if t, ok := openTodo(l); ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func removeOpenTodos(text string) string {
+	var keep []string
+	for _, l := range strings.Split(text, "\n") {
+		if _, ok := openTodo(l); !ok {
+			keep = append(keep, l)
+		}
+	}
+	return strings.Join(keep, "\n")
+}
+
+var anyTodoRe = regexp.MustCompile(`^\s*[-*+] \[.\] `)
+
+func appendTodos(text string, todos []string) string {
+	block := "- [ ] " + strings.Join(todos, "\n- [ ] ")
+	trimmed := strings.TrimRightFunc(text, unicode.IsSpace)
+	if trimmed == "" {
+		return block + "\n"
+	}
+	sep := "\n\n"
+	if anyTodoRe.MatchString(trimmed[strings.LastIndex(trimmed, "\n")+1:]) {
+		sep = "\n"
+	}
+	return trimmed + sep + block + "\n"
+}
+
+// CarryOverResult describes what CarryOver did.
+type CarryOverResult struct {
+	Created bool // today's note was created
+	Moved   int  // todos appended to today's note
+	Sources int  // earlier notes that had open todos
+}
+
+// CarryOver ensures the note for date exists and moves all open todos from
+// earlier daily notes into it (oldest first, skipping todos already open in
+// the target). Carried todos are removed from their source notes. Semantics
+// match the Obsidian todo-carry-over plugin.
+func (d Dir) CarryOver(date string) (CarryOverResult, error) {
+	var res CarryOverResult
+	path := d.pathFor(date)
+	b, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		b = []byte("# " + date + "\n")
+		if err := writeFile(path, string(b)); err != nil {
+			return res, err
+		}
+		res.Created = true
+	case err != nil:
+		return res, err
+	}
+	target := string(b)
+
+	entries, err := os.ReadDir(d.Path)
+	if err != nil {
+		return res, err
+	}
+	var prev []string
+	for _, e := range entries {
+		if e.IsDir() || !nameRe.MatchString(e.Name()) {
+			continue
+		}
+		if dt := strings.TrimSuffix(e.Name(), ".md"); dt < date {
+			prev = append(prev, dt)
+		}
+	}
+	sort.Strings(prev)
+
+	seen := map[string]bool{}
+	for _, t := range extractOpenTodos(target) {
+		seen[t] = true
+	}
+	var todos []string
+	sources := map[string]string{} // path -> content
+	for _, dt := range prev {
+		p := d.pathFor(dt)
+		c, err := os.ReadFile(p)
+		if err != nil {
+			return res, err
+		}
+		open := extractOpenTodos(string(c))
+		if len(open) == 0 {
+			continue
+		}
+		sources[p] = string(c)
+		for _, t := range open {
+			if !seen[t] {
+				seen[t] = true
+				todos = append(todos, t)
+			}
+		}
+	}
+	res.Sources = len(sources)
+	if len(sources) == 0 {
+		return res, nil
+	}
+
+	// Write the target first so nothing gets lost if a later write fails.
+	if len(todos) > 0 {
+		if err := writeFile(path, appendTodos(target, todos)); err != nil {
+			return res, err
+		}
+		res.Moved = len(todos)
+	}
+	for p, c := range sources {
+		if err := writeFile(p, removeOpenTodos(c)); err != nil {
+			return res, err
+		}
+	}
+	return res, nil
 }
 
 func writeFile(path, content string) error {

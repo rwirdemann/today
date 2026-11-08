@@ -29,6 +29,7 @@ type (
 		note     *daily.Note
 		fallback bool
 		err      error
+		status   string
 	}
 	fileChangedMsg struct{}
 	tickMsg        time.Time
@@ -114,7 +115,27 @@ func (m *Model) load() tea.Cmd {
 	dir, today := m.dir, m.today
 	return func() tea.Msg {
 		n, fb, err := dir.Load(today)
-		return loadedMsg{n, fb, err}
+		return loadedMsg{n, fb, err, ""}
+	}
+}
+
+// carryOver moves open todos from earlier notes into today's note
+// (creating it if needed) and then reloads.
+func (m *Model) carryOver() tea.Cmd {
+	dir, today := m.dir, m.today
+	return func() tea.Msg {
+		res, err := dir.CarryOver(today)
+		if err != nil {
+			return errMsg{fmt.Errorf("carry over: %w", err)}
+		}
+		var status string
+		if res.Moved > 0 {
+			status = fmt.Sprintf("%d open task(s) carried over from %d note(s)", res.Moved, res.Sources)
+		} else if res.Created {
+			status = "Created today's note"
+		}
+		n, fb, err := dir.Load(today)
+		return loadedMsg{n, fb, err, status}
 	}
 }
 
@@ -161,6 +182,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loadedMsg:
 		m.note, m.fallback, m.err = msg.note, msg.fallback, msg.err
+		if msg.status != "" {
+			m.status = msg.status
+		}
 		m.clampCursor()
 		return m, nil
 
@@ -204,7 +228,7 @@ func (m *Model) updateAdding(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return errMsg{err}
 			}
 			n, fb, err := dir.Load(today)
-			return loadedMsg{n, fb, err}
+			return loadedMsg{n, fb, err, ""}
 		}
 	}
 	var cmd tea.Cmd
@@ -231,9 +255,29 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "G", "end":
 		m.cursor = len(tasks) - 1
 		m.clampCursor()
+	case "ctrl+up", "K", "ctrl+down", "J":
+		other := m.cursor - 1
+		if s := msg.String(); s == "ctrl+down" || s == "J" {
+			other = m.cursor + 1
+		}
+		if other < 0 || other >= len(tasks) {
+			return m, nil
+		}
+		a, b, path := tasks[m.cursor], tasks[other], m.note.Path
+		m.cursor = other // cursor follows the moved task
+		dir, today := m.dir, m.today
+		return m, func() tea.Msg {
+			if err := daily.Swap(path, a, b); err != nil {
+				return errMsg{err}
+			}
+			n, fb, err := dir.Load(today)
+			return loadedMsg{n, fb, err, ""}
+		}
 	case "h":
 		m.hideDone = !m.hideDone
 		m.clampCursor()
+	case "c":
+		return m, m.carryOver()
 	case "r":
 		return m, m.load()
 	case "a":
@@ -250,7 +294,7 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return errMsg{err}
 			}
 			n, fb, err := dir.Load(today)
-			return loadedMsg{n, fb, err}
+			return loadedMsg{n, fb, err, ""}
 		}
 	}
 	return m, nil
@@ -341,7 +385,7 @@ func (m *Model) View() string {
 		if m.hideDone {
 			hide = "show done"
 		}
-		b.WriteString(helpStyle.Render("j/k move · space toggle · a add · h " + hide + " · r reload · q quit"))
+		b.WriteString(helpStyle.Render("j/k move · ctrl+↑/↓ reorder · space toggle · a add · c carry over · h " + hide + " · r reload · q quit"))
 	}
 	return b.String()
 }
