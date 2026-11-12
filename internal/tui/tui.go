@@ -214,7 +214,8 @@ func tick() tea.Cmd {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.load(), m.waitForChange(), tick())
+	// Ensure today's note exists and pull in open todos from earlier notes.
+	return tea.Batch(m.carryOver(), m.waitForChange(), tick())
 }
 
 func (m *Model) visible(p *pane) []daily.Task {
@@ -284,7 +285,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle midnight rollover.
 		if d := daily.Today(); d != m.date {
 			m.date = d
-			return m, tea.Batch(m.load(), tick())
+			return m, tea.Batch(m.carryOver(), tick())
 		}
 		return m, tick()
 
