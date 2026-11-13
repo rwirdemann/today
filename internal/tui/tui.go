@@ -676,6 +676,9 @@ func (m *Model) inboxRows() []row {
 		if t.Section != section {
 			section = t.Section
 			if section != "" {
+				if len(rows) > 0 {
+					rows = append(rows, row{header: true}) // separate from previous section
+				}
 				rows = append(rows,
 					row{text: sectionStyle.Render(section), header: true},
 					row{header: true})
