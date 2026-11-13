@@ -621,6 +621,7 @@ func (m *Model) footer() string {
 type row struct {
 	text   string
 	cursor bool
+	header bool // section heading or the blank line after it
 }
 
 func taskText(t daily.Task, cursor, focused bool) string {
@@ -656,7 +657,7 @@ func (m *Model) todayRows() []row {
 	rows := make([]row, len(tasks))
 	for i, t := range tasks {
 		c := i == m.today.cursor
-		rows[i] = row{taskText(t, c, m.focus == focusToday), c}
+		rows[i] = row{text: taskText(t, c, m.focus == focusToday), cursor: c}
 	}
 	return rows
 }
@@ -675,11 +676,13 @@ func (m *Model) inboxRows() []row {
 		if t.Section != section {
 			section = t.Section
 			if section != "" {
-				rows = append(rows, row{text: sectionStyle.Render(section)})
+				rows = append(rows,
+					row{text: sectionStyle.Render(section), header: true},
+					row{header: true})
 			}
 		}
 		c := i == m.inbox.cursor
-		rows = append(rows, row{taskText(t, c, m.focus == focusInbox), c})
+		rows = append(rows, row{text: taskText(t, c, m.focus == focusInbox), cursor: c})
 	}
 	return rows
 }
@@ -708,8 +711,10 @@ func (m *Model) renderPane(title string, rows []row, focused bool, width, height
 		start = cur - limit + 1
 	}
 	// Show the section header above the cursor when scrolled.
-	if start > 0 && start == cur && cur > 0 {
-		start--
+	if start > 0 && start == cur {
+		for start > 0 && rows[start-1].header && cur-(start-1) < limit {
+			start--
+		}
 	}
 	end := min(len(rows), start+limit)
 	for _, r := range rows[start:end] {
